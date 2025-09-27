@@ -1,0 +1,5 @@
+secrets.txt
+CLI.txt
+*.log
+cryptol-files
+*__pycache__
