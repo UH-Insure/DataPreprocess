@@ -14,8 +14,6 @@ class CryptolFile(Base):
     __tablename__ = "cryptol_file"
 
     __table_args__ = (
-        # Optional FULLTEXT index (requires InnoDB + appropriate MariaDB version)
-        # Index("ix_cryptol_file_content_fts", "content", mysql_prefix="FULLTEXT"),
         {
             "mysql_charset": "utf8mb4",
             "mysql_collate": "utf8mb4_bin",
