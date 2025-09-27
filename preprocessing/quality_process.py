@@ -1,6 +1,4 @@
-# ---------- metrics helpers ----------
 import re, hashlib
-from pathlib import Path
 
 # Encoded-data (StarCoder-style)
 _ENC_BASE64_RE   = re.compile(r"[A-Za-z0-9+/=\n]{64,}")

@@ -3,3 +3,4 @@ CLI.txt
 *.log
 cryptol-files
 *__pycache__
+#.DS_STORE
