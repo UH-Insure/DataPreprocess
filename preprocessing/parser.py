@@ -5,10 +5,8 @@ and export to JSONL.
 
 Each line in the JSONL has:
   - filename: absolute file path (or stripped path if --strip is provided)
-  - relpath: path relative to the provided root directory
   - filetype: 'cry' or 'saw'
   - content: file contents as UTF-8 (with replacement for invalid bytes)
-  - root: the root directory that yielded this file
 
 Usage:
   python code_parser.py /path/to/repo [/another/root ...] --out data/sources.jsonl --strip /path/to
@@ -21,17 +19,11 @@ import argparse
 import json
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
-from database.utility import database
-from database.entity import CryptolFile
-from sqlalchemy.orm import Session
-from sqlalchemy import select
 
 # --- Helpers -----------------------------------------------------------------
 
 def iter_source_files(root: Path, exts: Iterable[str]=(".cry", ".saw")) -> Iterator[Path]:
-    """
-    Yield Path objects for files under `root` matching any extension in `exts` (case-insensitive).
-    """
+    """Yield Path objects for files under `root` matching any extension in `exts` (case-insensitive)."""
     exts_lower = {e.lower() for e in exts}
     for p in root.rglob("*"):
         if p.is_file() and p.suffix.lower() in exts_lower:
@@ -59,6 +51,8 @@ def strip_prefix(full: Path, prefix: Optional[Path]) -> str:
         # Not a prefix; fall back to absolute
         return full.as_posix()
 
+# --- Optional utility ---------------------------------------------------------
+
 def jsonl_to_dataframe(absolute_path: str):
     """
     Load a JSONL file into a pandas DataFrame. (Optional utility.)
@@ -83,13 +77,11 @@ def main(argv=None):
         nargs="+",
         help="One or more root directories to search."
     )
-    '''
     parser.add_argument(
         "--out", "-o",
         default="data/cryptol_sources.jsonl",
         help="Output JSONL path (default: data/cryptol_sources.jsonl)."
     )
-    '''
     parser.add_argument(
         "--strip",
         metavar="PATH",
@@ -97,56 +89,56 @@ def main(argv=None):
         default=None,
         help="If provided, strip this leading path prefix from 'filename' (nice for repo-relative paths)."
     )
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="Append to the JSONL instead of overwriting."
+    )
+
     args = parser.parse_args(argv)
 
     roots = [Path(r).expanduser().resolve() for r in args.roots]
-    #out_path = Path(args.out).expanduser().resolve()
+    out_path = Path(args.out).expanduser().resolve()
     strip_path = Path(args.strip).expanduser().resolve() if args.strip else None
 
-    #ensure_parent(out_path)
+    ensure_parent(out_path)
 
+    mode = "a" if args.append and out_path.exists() else "w"
     total = 0
-    errors = []
-    db = database()
-    with Session(db.engine) as session:
+    errors: list[str] = []
+
+    with open(out_path, mode, encoding="utf-8") as out_f:
         for root in roots:
             root = root.resolve()
-            for p in iter_source_files(root, exts=(".cry",)):
+            for p in iter_source_files(root, exts=(".cry", ".saw")):
                 try:
                     content = read_text_safe(p)
                 except Exception as e:
                     print(f"[WARN] Could not read {p}: {e}", file=sys.stderr)
+                    errors.append(str(p))
                     continue
 
-                # Use suffix directly instead of regex; safer and faster.
+                # filetype from suffix
                 suff = p.suffix.lower()
-                if suff not in (".cry"):
-                    # Extremely defensive; should not happen due to filter above
+                if suff not in (".cry", ".saw"):
+                    # Defensive: should not happen due to filter above
                     continue
+                filetype = suff.lstrip(".")
 
+                # filename with optional strip, relpath always relative to current root
                 filename = strip_prefix(p, strip_path)
+                record = {
+                    "filename": filename,
+                    "filetype": filetype,
+                    "content": content,
+                }
 
-                
-                try:
-                    stmt = select(CryptolFile).where(CryptolFile.filename == filename)
-                    result = session.execute(stmt).first()
-                    if result is not None:
-                        continue
-                    file = CryptolFile(
-                        filename=filename,      # absolute or stripped path
-                        #"relpath": relpath,        # relative to the producing root
-                        #"filetype": filetype,      # 'cry' or 'saw'
-                        #"root": root.as_posix(),   # emitting root
-                        content=content,        # UTF-8 text with replacement
-                    )
-                    #out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                    session.add(file)
-                    session.commit()
-                    total += 1
-                except:
-                    errors.append(filename)
-                    session.flush()
-    print(f"Wrote {total} files (.cry) to database")
+                out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                total += 1
+
+    print(f"Wrote {total} files (.cry/.saw) to {out_path}")
+    if errors:
+        print(f"[INFO] {len(errors)} files could not be read. First few:", errors[:5])
 
 if __name__ == "__main__":
     main()
