@@ -8,7 +8,7 @@ def _have_langchain_and_ollama():
     except Exception:
         return False
 
-def _mk_model(model_name: str = "qwen2.5-coder:7b", temperature: float = 0.0):
+def _mk_model(model_name: str, temperature: float = 0.0):
     from langchain_ollama import ChatOllama
     return ChatOllama(model=model_name, temperature=temperature)
 
@@ -53,7 +53,7 @@ def _fallback_batch(items: List[Dict]) -> List[bool]:
         outs.append(len(txt) < 500)
     return outs
 
-def decide_keep_drop_batch(items: List[Dict], model_name: str = "qwen2.5-coder:7b") -> List[bool]:
+def decide_keep_drop_batch(items: List[Dict], model_name: str) -> List[bool]:
     """
     items: List[{'comment_text': str, 'file_path': str, 'code_context': str}]
     returns: List[bool] KEEP=True, DROP=False for each item, in order
