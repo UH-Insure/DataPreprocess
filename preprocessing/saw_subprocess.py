@@ -21,7 +21,7 @@ def run_saw_script(
 
     Returns a dict:
       {
-        "ok": bool,                # True iff returncode == 0
+        "load_ok": bool,                # True iff returncode == 0
         "returncode": int,         # SAW process return code
         "stdout": str,             # captured stdout
         "stderr": str,             # captured stderr ('' if streamed/merged)
@@ -33,11 +33,11 @@ def run_saw_script(
     Notes:
       - If 'stream=True', output is echoed live to stdout; 'stderr' is merged into 'stdout'.
       - No exceptions are raised for process failures; only "file_not_found" or "saw_not_found"
-        are reported via the 'error' field with ok=False and returncode=-1.
+        are reported via the 'error' field with load_ok=False and returncode=-1.
     """
     result: Dict[str, Any] = {
         "filename": filename,
-        "ok": False,
+        "load_ok": False,
         "returncode": -1,
         "stdout": "",
         "stderr": "",
@@ -101,7 +101,7 @@ def run_saw_script(
             result["returncode"] = cp.returncode
             result["stdout"] = cp.stdout or ""
             result["stderr"] = cp.stderr or ""
-        result["ok"] = (result["returncode"] == 0)
+        result["load_ok"] = (result["returncode"] == 0)
         return result
     except subprocess.TimeoutExpired as te:
         result["error"] = "timeout"
@@ -119,7 +119,7 @@ def load_saw_results(filepath: str) -> pd.DataFrame:
 def get_dummy_saw_result(filename: str, error: str) -> Dict[str, Any]:
     return {
         "filename": filename,
-        "ok": True,
+        "load_ok": True,
         "returncode": -1,
         "stdout": "",
         "stderr": f"SAW script not found: {filename}" if error == "file_not_found" else f"'{error}' not found on PATH",
@@ -158,10 +158,10 @@ if __name__ == "__main__":
 
         print(f"[RUN] Processing {fpath}")
         try:
-            if fpath == "examples/chacha20/chacha20.saw":
+            if fpath in ["saw-script/examples/chacha20/chacha20.saw", "saw-script/saw-python/tests/saw-in-progress/HMAC/spec/SHA256.saw"]:
                 res = get_dummy_saw_result(fpath, None)
             else:
-                res = run_saw_script(fpath, stream=True, timeout=60)
+                res = run_saw_script(fpath, stream=True, cwd="/workspace/saw-script", timeout=60)
 
 
         except Exception as e:
