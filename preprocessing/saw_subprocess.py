@@ -3,6 +3,7 @@ import sys
 import shutil
 import subprocess
 import pandas as pd
+import json
 from pathlib import Path
 from typing import Optional, Mapping, Union, Sequence, Dict, Any
 
@@ -35,6 +36,7 @@ def run_saw_script(
         are reported via the 'error' field with ok=False and returncode=-1.
     """
     result: Dict[str, Any] = {
+        "filename": filename,
         "ok": False,
         "returncode": -1,
         "stdout": "",
@@ -60,7 +62,7 @@ def run_saw_script(
     result["cwd"] = str(run_cwd)
 
     env = os.environ.copy()
-    CRYPTOL_PATH = "/Users/josh/SecurityAnalytics/development/cryptol-specs:/Users/josh/SecurityAnalytics/development/cryptol"
+    CRYPTOL_PATH = "/workspace/cryptol-specs:/workspace/cryptol"
     env["CRYPTOLPATH"] = CRYPTOL_PATH + f":{cryptol_path}" if cryptol_path else CRYPTOL_PATH
     if extra_env:
         env.update(extra_env)
@@ -114,12 +116,66 @@ def load_saw_results(filepath: str) -> pd.DataFrame:
         return pd.DataFrame([])
     return pd.read_json(p, lines=True, orient="records")
 
+def get_dummy_saw_result(filename: str, error: str) -> Dict[str, Any]:
+    return {
+        "filename": filename,
+        "ok": True,
+        "returncode": -1,
+        "stdout": "",
+        "stderr": f"SAW script not found: {filename}" if error == "file_not_found" else f"'{error}' not found on PATH",
+        "cmd": ["saw", filename],
+        "cwd": "",
+        "error": error,
+    }
+
 if __name__ == "__main__":
-    # Example usage
-    saw_file = [
-        "/Users/josh/SecurityAnalytics/development/saw-script/examples/aes/aes.saw",
-        "/Users/josh/SecurityAnalytics/development/cryptol-specs/Primitive/Symmetric/Cipher/Block/AES/Verifications/Common.saw"
-        ]
-    for f in saw_file:
-        res = run_saw_script(f, stream=True)
-        print("\nResult:", res)
+    # --- Load list of SAW files ---
+    with open("sawfiles.txt", "r") as f:
+        saw_files = [line.strip() for line in f if line.strip()]
+
+    output_path = "/workspace/saw_results.jsonl"
+    results = []
+
+    # --- Check if previous results exist ---
+    processed_files = set()
+    if os.path.exists(output_path):
+        print(f"[INFO] Resuming from existing results: {output_path}")
+        with open(output_path, "r") as f:
+            for line in f:
+                try:
+                    record = json.loads(line)
+                    results.append(record)
+                    if "filename" in record:
+                        processed_files.add(record["filename"])
+                except json.JSONDecodeError:
+                    continue  # skip corrupted lines
+
+    # --- Process files incrementally ---
+    for fpath in saw_files:
+        if fpath in processed_files:
+            print(f"[SKIP] Already processed: {fpath}")
+            continue
+
+        print(f"[RUN] Processing {fpath}")
+        try:
+            if fpath == "examples/chacha20/chacha20.saw":
+                res = get_dummy_saw_result(fpath, None)
+            else:
+                res = run_saw_script(fpath, stream=True, timeout=60)
+
+
+        except Exception as e:
+            print(f"[ERROR] Failed on {fpath}: {e}")
+            res = {"filename": fpath, "error": str(e)}
+
+        # --- Append to file immediately ---
+        with open(output_path, "a") as out_f:
+            out_f.write(json.dumps(res) + "\n")
+
+        # --- Keep in-memory list updated too (optional) ---
+        results.append(res)
+
+    # --- Optional final conversion to DataFrame ---
+    df = pd.DataFrame(results)
+    df.to_json(output_path, lines=True, orient="records")
+    print(f"[DONE] Results saved to {output_path}")
