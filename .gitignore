@@ -22,3 +22,6 @@ foo.log
 .gitignore
 .DS_Store
 .gitignore
+.env
+
+
