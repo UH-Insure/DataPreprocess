@@ -13,10 +13,7 @@ _HEX_LONG_RE = re.compile(r"0x[0-9A-Fa-f]{4,}")
 _NUM_LONG_RE = re.compile(r"\b\d{6,}\b")
 
 # Junk path
-_JUNK_PATH_RE = re.compile(
-    r"(?:^|/)(?:test|tests|example|examples|tmp|backup|backups|copy|copies|vendor|third_party|old)(?:/|$)",
-    re.I
-)
+_JUNK_PATH = ["SAW-course/src/intr/", "SAW-course/src/lab2A/", "SAW-course/src/lab2E/"]
 
 def normalize_newlines(s: str) -> str:
     return s.replace("\r\n", "\n").replace("\r", "\n")
@@ -136,7 +133,7 @@ def compute_file_metrics(
 
     # Junk path heuristic
     path_norm = filename.replace("\\", "/")
-    junk_path = bool(_JUNK_PATH_RE.search(path_norm))
+    junk_path = any(path_norm.startswith(prefix) for prefix in _JUNK_PATH)
 
     return {
         # identity
