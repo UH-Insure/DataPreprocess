@@ -1,0 +1,93 @@
+
+=== Task 1 ===
+
+[PROMPT]
+### Instruction:
+    Write a Cryptol function that implements the tasks described below
+    Output exactly one code block in the format ```cryptol ...``` and nothing else — no explanation, no extra text. The file should be valid Cryptol source that can be loaded by the Cryptol tool and by SAW.
+
+    ### Request:
+    Task: Implement a function named `xor8` which takes two 8-bit words and returns their bitwise XOR. Also provide a constant `zero8` equal to 0 (8-bit).
+    
+[GENERATED CODE]
+xor8 : [8] -> [8] -> [8]
+xor8 x y = x ^ y
+
+zero8 : [8]
+zero8 = 0
+  [PASS] test 1: OK
+[RESULT] Task 1: ALL PASS
+
+
+=== Task 2 ===
+
+[PROMPT]
+### Instruction:
+    Write a Cryptol function that implements the tasks described below
+    Output exactly one code block in the format ```cryptol ...``` and nothing else — no explanation, no extra text. The file should be valid Cryptol source that can be loaded by the Cryptol tool and by SAW.
+
+    ### Request:
+    Task: Implement a function named `matrix` which takes no input and returns a 3 x 3 matrix of tuples. For the function use a nested comprehension to write an expression to produce a 3 × 3 matrix (as a sequence of sequences), such that the ijth entry contains the value (i, j).
+    
+[GENERATED CODE]
+matrix = [[(i, j) | j <- [0..2]] | i <- [0..2]]
+  [PASS] test 1: OK
+[RESULT] Task 2: ALL PASS
+
+
+=== Task 3 ===
+
+[PROMPT]
+### Instruction:
+    Write a Cryptol function that implements the tasks described below
+    Output exactly one code block in the format ```cryptol ...``` and nothing else — no explanation, no extra text. The file should be valid Cryptol source that can be loaded by the Cryptol tool and by SAW.
+
+    ### Request:
+    Task: Implement a function named `encrypt` that performs encryption on ASCII strings and a function named `decrypt` that performs decryption on ASCII strings. Each character must be shifted by the given key modulo 256.
+    
+[GENERATED CODE]
+encrypt : [8] -> [8] -> [8]
+encrypt key char = (key + char) % 256
+
+decrypt : [8] -> [8] -> [8]
+decrypt key char = (char - key) % 256
+  [FAIL] test 1: Error: [error] at :1:1--1:8
+    Value not in scope: encrypt {'errors': ['[error] at :1:1--1:8\n    Value not in scope: encrypt'], 'source': 'module name <interactive>', 'warnings': []}
+[RESULT] Task 3: HAS FAILURES
+
+
+=== Task 4 ===
+
+[PROMPT]
+### Instruction:
+    Write a Cryptol property that tests the function described below.
+    Output exactly one code block in the format ```cryptol ...``` and nothing else — no explanation, no extra text. The code block should contain valid Cryptol source that can be loaded by the Cryptol tool and by SAW.
+
+    ### Request:
+    Task: Using ONLY the names and types provided, write a monomorphic Cryptol property that proves decrypt inverts encrypt for a 512-byte plaintext.
+    
+[GENERATED CODE]
+
+
+// --- Begin Test Setup Code ---
+encryptChar : [8] -> [8] -> [8]
+encryptChar key c = (c + key)
+decryptChar : [8] -> [8] -> [8]
+decryptChar key c = (c - key)
+encrypt : {n} [8] -> [n][8] -> [n][8]
+encrypt key txt = [ encryptChar key c | c <- txt ]
+decrypt : {n} [8] -> [n][8] -> [n][8]
+decrypt key txt = [ decryptChar key c | c <- txt ]
+// --- End Test Setup Code ---
+
+property decrypt_invert_encrypt_512() {
+    let key = [0x00..0xFF : [8]] ; // 256-bit key
+    let iv = [0x00..0xFF : [8]] ;  // 256-bit IV
+    let plaintext = [0x00..0xFF : [8]] ; // 512-bit plaintext
+    
+    let ciphertext = encrypt key iv plaintext ;
+    let decrypted = decrypt key iv ciphertext ;
+    
+    decrypted == plaintext
+}
+[ERROR] test_setup_code failed: invalid syntax (<string>, line 1)
