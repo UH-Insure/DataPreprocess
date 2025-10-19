@@ -14,9 +14,18 @@ class Config:
     TEMP_FILE: str = "cryptol-files/generated.cry"              # single temp file; overwritten each row
     CRYPTOL_PATH: str = "files/generated.cry"  # path inside Cryptol server container
     EVALS_PATH: str = "/Users/josh/SecurityAnalytics/DataPreprocess/eval/basic_evals.jsonl"
-    PROMPT_TEMPLATE: str = """### Instruction:
-    Write a Cryptol source file that implements the function described below.
-    Output exactly one file (with the exact filename requested) and nothing else — no explanation, no extra text. The file should be valid Cryptol source that can be loaded by the Cryptol tool and by SAW.
+
+    FUNCTION_PROMPT_TEMPLATE: str = """### Instruction:
+    Write a Cryptol function that implements the tasks described below. Include any type signature necessary for the function.
+    Output exactly one code block in the format ```cryptol ...``` and nothing else — no explanation, no extra text. The file should be valid Cryptol source that can be loaded by the Cryptol tool and by SAW.
+
+    ### Request:
+    Task: {task}
+    """
+
+    PROPERTY_PROMPT_TEMPLATE: str = """### Instruction:
+    Write a Cryptol property that tests the function described below.
+    Output exactly one code block in the format ```cryptol ...``` and nothing else — no explanation, no extra text. The code block should contain valid Cryptol source that can be loaded by the Cryptol tool and by SAW.
 
     ### Request:
     Task: {task}
@@ -65,8 +74,13 @@ def run_eval_suite(eval_df: pd.DataFrame, config: Config, provider: str = "nebiu
         task_id        = row.get("task_id", f"row{idx}")
         tests          = row.get("test_list", []) or []
         setup_code     = row.get("test_setup_code", "") or ""
+        type           = row.get("type", "function")
 
-        prompt = config.PROMPT_TEMPLATE.format(task=task)
+        # -------- Prepare prompt --------
+        if type == "property":
+            prompt = config.PROPERTY_PROMPT_TEMPLATE.format(task=task)
+        else:
+            prompt = config.FUNCTION_PROMPT_TEMPLATE.format(task=task)
 
         print(f"\n=== Task {task_id} ===")
         print(f"[PROMPT]\n{prompt}")
@@ -87,6 +101,9 @@ def run_eval_suite(eval_df: pd.DataFrame, config: Config, provider: str = "nebiu
 
         # -------- Extract code & save to single temp file --------
         source_code = extract_code_block(content)
+        if setup_code != "":
+            source_code = "\n\n// --- Begin Test Setup Code ---\n" + setup_code \
+                  + "\n// --- End Test Setup Code ---\n\n" + source_code
         print(f"[GENERATED CODE]\n{source_code}\n")
         try:
             with open(config.TEMP_FILE, "w") as f:
