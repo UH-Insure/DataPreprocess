@@ -1,13 +1,15 @@
 /cryptol-files
 *__pycache__/
-data*
+data
 minhash_outputs*
 recycle*
 CLI.txt
 *.gexf
 *.graphml
 *.csv
-*.jsonl
+jsonl
+saw_passes
+backup_v*
 sawfiles.txt
 secrets.txt
 test.py
@@ -23,5 +25,5 @@ foo.log
 .DS_Store
 .gitignore
 .env
-
+new_implementations
 

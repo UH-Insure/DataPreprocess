@@ -1,0 +1,82 @@
+module Primitive::Keyless::Hash::SHA3::SHA3 where
+import Primitive::Keyless::Hash::SHA3::KeccakBitOrdering as KBO
+import Primitive::Keyless::Hash::SHA3::Specification where
+    type b = 1600
+    type nr = 24
+    type c = 2 * digest
+
+parameter
+    /**
+     * Digest length -- that is, the length of the output of the hash function.
+     *
+     * The spec allows the 5 FIPS-approved digest lengths : 160, 224, 256, 384,
+     * and 512 bits. The constraint here is looser than that requirement; the
+     * restriction that 8 divides the digest length is to allow the byte-wise
+     * `hashBytes` function.
+     */
+    type digest : #
+    type constraint (fin digest, digest % 8 == 0, digest >= 224, digest <= 512)
+
+/**
+ * Length of the hash digest.
+ *
+ * This is made public to instantiate the `HashInterface`.
+ */
+type DigestLength = digest
+
+/**
+ * There is no upper bound on the message length for SHA3 hashes.
+ */
+type MessageUpperBound = inf
+
+/**
+ * Security strength (in bits) of the hash function.
+ * [FIPS-202] Appendix A.1, Table 4.
+ * @see Hash functions webpage: https://csrc.nist.gov/projects/hash-functions#security-strengths
+ *
+ * This is made public to instantiate the `HashInterface`.
+ */
+type SecurityStrength = DigestLength / 2
+
+/**
+ * SHA-3 hash function specification.
+ * [FIPS-202] Section 6.1.
+ *
+ * Note that the specification of `c` is above, in the instantiation of the
+ * `Keccak` module.
+ *
+ * This expects input and produces output in the bit ordering used by the
+ * `Keccak` spec, where bytes are in MSB order and the bits in each byte are
+ * in LSB order. Use the `KeccakBitOrdering::toBytes` function to transform
+ * the input and output to Cryptol-standard MSB order
+ */
+sha3 : {n} (fin n) => [n] -> [digest]
+sha3 M = Keccak`{d=digest} (M # 0b01)
+
+/**
+ * SHA-3 hash function specification.
+ * [FIPS-202] Section 6.1.
+ *
+ * Note that the specification of `c` is above, in the instantiation of the
+ * `keccak` module.
+ *
+ * This expects input and output in MSB order. It handles conversion to and
+ * from the bit ordering expected by `Keccak`. If input is provided in the
+ * format described in [FIPS-202] Appendix B (a hex string with an even
+ * number of digits and an actual length `n`), use the `KOB::truncate` function
+ * to get the correct input.
+ */
+hash : {n} (fin n) => [n] -> [digest]
+hash M = KBO::reverseBitOrdering (Keccak`{d=digest} ((KBO::reverseBitOrdering M) # 0b01))
+
+/**
+ * SHA-3 hash function specification over byte-delimited inputs.
+ *
+ * This expects input and output in MSB order. It handles conversion to and
+ * from the bit ordering expected by `Keccak`. If input is provided in the
+ * format described in [FIPS-202] Appendix B (a hex string with an even
+ * number of digits and an actual length `n`), use the `KOB::truncate` function
+ * to get the correct input.
+ */
+hashBytes : {m} (fin m) => [m][8] -> [digest / 8][8]
+hashBytes M = split (hash (join M))
