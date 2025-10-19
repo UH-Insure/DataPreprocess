@@ -5,7 +5,7 @@ import json
 import hashlib
 from pathlib import Path
 from typing import Dict, List, Tuple
-from preprocessing.comment_policy_agent import decide_keep_drop_batch
+from .comment_policy_agent import decide_keep_drop_batch
 
 # Line comment; Block comment; Doc string;
 LINE_RE_CRY  = re.compile(r"//[^\n]*")          
