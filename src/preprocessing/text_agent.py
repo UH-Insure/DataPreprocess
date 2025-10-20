@@ -9,7 +9,7 @@ import json
 
 import pandas as pd
 
-CACHE_PATH = "GPT_text_processing_cache.jsonl"
+CACHE_PATH = "cache/GPT_text_processing_cache.jsonl"
 
 PROMPT_TEMPLATE = """
 You are a **preprocessing assistant** whose job is to convert a raw text section (which may include prose, Cryptol examples, comments, docstrings, etc.) into a **cleaned snippet** optimal for fine-tuning a code LLM.
