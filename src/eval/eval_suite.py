@@ -14,7 +14,7 @@ class Config:
     MODEL_ID: str = "Qwen/Qwen3-Coder-30B-A3B-Instruct"
     TEMP_FILE: str = "cryptol-files/generated.cry"              # single temp file; overwritten each row
     CRYPTOL_PATH: str = "files/generated.cry"  # path inside Cryptol server container
-    EVALS_PATH: str = "/Users/josh/SecurityAnalytics/DataPreprocess/eval/.data/evals.jsonl"
+    EVALS_PATH: str = "/Users/josh/SecurityAnalytics/DataPreprocess/src/eval/.data/evals.jsonl"
 
     FUNCTION_PROMPT_TEMPLATE: str = """### Instruction:
     Write a Cryptol function that implements the tasks described below
@@ -61,7 +61,7 @@ def run_eval_suite(eval_df: pd.DataFrame, config: Config, provider: str = "nebiu
     """
     start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
     print(f"Starting eval suite at {start_time}, {len(eval_df)} tasks to process.")
-    filename = f"eval/.data/test/eval_results_{start_time}.txt"
+    filename = f"src/eval/.data/test/eval_results_{start_time}.txt"
     # ----------------- Inference Client -----------------
     HF_TOKEN = os.getenv("HF_TOKEN")
     if not HF_TOKEN:
@@ -86,9 +86,11 @@ def run_eval_suite(eval_df: pd.DataFrame, config: Config, provider: str = "nebiu
             prompt = config.PROPERTY_PROMPT_TEMPLATE.format(task=task)
         else:
             prompt = config.FUNCTION_PROMPT_TEMPLATE.format(task=task)
+        if setup_code != "":
+            prompt += f"\n### Additional setup code:\n```cryptol\n{setup_code}\n```"
 
         result_ = f"\n=== Task {task_id} ===\n"
-        result_ += f"\n[PROMPT]\n{prompt}\n"
+        result_ += f"\n[PROMPT BEGIN]\n{prompt}\n[PROMPT END]\n\n"
 
         # -------- Inference --------
         try:
@@ -109,9 +111,8 @@ def run_eval_suite(eval_df: pd.DataFrame, config: Config, provider: str = "nebiu
         # -------- Extract code & save to single temp file --------
         source_code = extract_code_block(content)
         if setup_code != "":
-            source_code = "\n\n// --- Begin Test Setup Code ---\n" + setup_code \
-                  + "\n// --- End Test Setup Code ---\n\n" + source_code
-        result_ += f"[GENERATED CODE]\n{source_code}\n"
+            source_code = f"{setup_code}\n\n{source_code}"
+        result_ += f"\n[GENERATE BEGIN]\n```cryptol\n{source_code}\n```\n[GENERATE END]\n\n"
         try:
             with open(config.TEMP_FILE, "w") as f:
                 f.write(source_code)
