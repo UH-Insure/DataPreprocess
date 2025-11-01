@@ -61,11 +61,11 @@ SYSTEM_PROMPT_CRYPTOL = (
     "\n"
     "Output requirements:\n"
     "- Return exactly ONE fenced code block labeled `cryptol` and nothing else (no prose before/after).\n"
-    "- No comments, no Markdown inside the code, ASCII only.\n"
+    "- No Markdown inside the code, ASCII only.\n"
     "- The code must load and parse in Cryptol (no REPL directives like :prove/:check).\n"
     "\n"
     "Behavioral rules:\n"
-    "- Write succinct properties and supporting definitions that match the user’s request; avoid full module dumps unless asked.\n"
+    "- Write succinct properties and supporting definitions that match the user’s request.\n"
     "- Provide explicit type signatures; add necessary constraints (`=>`) to ensure totality and finiteness.\n"
     "- Use exact names and shapes from any associated source; prefer small, composable helpers over large rewrites.\n"
 )
@@ -75,7 +75,7 @@ SYSTEM_PROMPT_SAW = (
     "\n"
     "Output requirements:\n"
     "- Return exactly ONE fenced code block labeled `saw` and nothing else (no prose before/after).\n"
-    "- No comments, no Markdown inside the code, ASCII only.\n"
+    "- No Markdown inside the code, ASCII only.\n"
     "- The code must load and parse in SAW.\n"
     "\n"
     "Behavioral rules:\n"
@@ -86,9 +86,8 @@ SYSTEM_PROMPT_SAW = (
     "- Invoke the exact target function/method with `*_execute_func [...]` using precise names/signatures from the associated source.\n"
     "- Specify the postcondition with `*_return (...)` (e.g., equalities over results/arrays/structs).\n"
     "- Load artifacts using `java_load_class` or `*_load_module` as appropriate.\n"
-    "- Verify with `jvm_verify`/`llvm_verify`. If a tactic is required, infer the solver (do not explain).\n"
+    "- Verify with `jvm_verify`/`llvm_verify`, choose the correct tactic, and choose the correct solver depending on the context (do not explain).\n"
 )
-
 
 # ---- User template: supplies code and file metadata ----
 USER_TEMPLATE = (
