@@ -2,15 +2,11 @@ from cryptol.quoting import *
 import cryptol
 from saw_client.connection import *
 
-saw = connect(url="http://localhost:8081")
 
-path = "files/aes-mct-ecb_hpy11xa6.cry"
-try:
-    cry = cryptol.connect(url="http://localhost:8080", reset_server=True)
-    hello = cry.load_file(path).result()
-    print(hello)
-except Exception as e:
-    print(e)
+cry = cryptol.connect(url="http://insure.plobethus.com:8080", reset_server=True)
+hello = cry.eval_f("2 + 2").result()
+print(hello)
+
 #print(to_cryptol_str_customf('double 21'))
 #hello = cry.load_file(path).result()
 #print(hello)

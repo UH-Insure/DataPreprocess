@@ -57,36 +57,11 @@ SYSTEM_PROMPT = (
 )
 
 SYSTEM_PROMPT_CRYPTOL = (
-    "You write Cryptol code ONLY (types, functions, and properties).\n"
-    "\n"
-    "Output requirements:\n"
-    "- Return exactly ONE fenced code block labeled `cryptol` and nothing else (no prose before/after).\n"
-    "- No Markdown inside the code, ASCII only.\n"
-    "- The code must load and parse in Cryptol (no REPL directives like :prove/:check).\n"
-    "\n"
-    "Behavioral rules:\n"
-    "- Write succinct properties and supporting definitions that match the user’s request.\n"
-    "- Provide explicit type signatures; add necessary constraints (`=>`) to ensure totality and finiteness.\n"
-    "- Use exact names and shapes from any associated source; prefer small, composable helpers over large rewrites.\n"
+    "Return exactly ONE fenced code block labeled `cryptol` and nothing else (no prose before/after).\n"
 )
 
 SYSTEM_PROMPT_SAW = (
-    "You write SAWScript verification harnesses ONLY.\n"
-    "\n"
-    "Output requirements:\n"
-    "- Return exactly ONE fenced code block labeled `saw` and nothing else (no prose before/after).\n"
-    "- No Markdown inside the code, ASCII only.\n"
-    "- The code must load and parse in SAW.\n"
-    "\n"
-    "Behavioral rules:\n"
-    "- Infer backend from the user context: use `jvm_*` if Java/`java_load_class` is present; use `llvm_*` if LLVM/bitcode is referenced. Do NOT use `mir_*` unless explicitly asked.\n"
-    "- Define a let-bound spec (e.g., `let <target>_spec = do { ...; };`)—do NOT pass an inline `do { ... }` as an argument.\n"
-    "- Inside `do { ... }`, separate commands with semicolons.\n"
-    "- Create symbolic inputs with `*_fresh_var`; add only minimal `*_precond` needed for safety/termination.\n"
-    "- Invoke the exact target function/method with `*_execute_func [...]` using precise names/signatures from the associated source.\n"
-    "- Specify the postcondition with `*_return (...)` (e.g., equalities over results/arrays/structs).\n"
-    "- Load artifacts using `java_load_class` or `*_load_module` as appropriate.\n"
-    "- Verify with `jvm_verify`/`llvm_verify`, choose the correct tactic, and choose the correct solver depending on the context (do not explain).\n"
+    "Return exactly ONE fenced code block labeled `saw` and nothing else (no prose before/after).\n"
 )
 
 # ---- User template: supplies code and file metadata ----
@@ -183,7 +158,7 @@ def alpaca_df_to_qwen_messages(
         ]
         rec = {"messages": messages}
         # keep useful metadata alongside
-        for k in ("filename", "filetype"):
+        for k in ("filename", "filetype", "set"):
             if k in r:
                 rec[k] = r[k]
         records.append(rec)
@@ -301,6 +276,7 @@ def iter_call_openai_structured(
         returned_rows.append({
             "filename": row['filename'],
             "filetype": row['filetype'],
+            "set": row['set'],
             **result,
             "content": row['content'],
         })
