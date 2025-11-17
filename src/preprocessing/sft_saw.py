@@ -20,46 +20,32 @@ class AlpacaRow(BaseModel):
 
 SYSTEM_PROMPT = (
     "You write spec-writing instructions for software verification.\n"
-    "Given a SAW script and associated source files, return exactly one Alpaca-style instruction.\n"
-    "The instruction must be standalone, <= 150 words, and contain no solution.\n"
+    "Given a SAW script and/or associated source files, return exactly one Alpaca-style instruction.\n"
+    "The instruction must be standalone, <= 100 words, and contain no solution.\n"
+    ""
 )
 
-# --- User template (SAW + N sources) with JSON-only contract ---
-'''
-USER_TEMPLATE = (
-    "Primary SAW file: {saw_filename}\n"
-    "Associated source files: {source_names}\n"
-    "Goal: Produce one *instruction* asking the assistant to write a SAW verification harness "
-    "(e.g., an llvm_verify harness and/or Cryptol properties) that directly references the functions from the C/Java source code"
-    "in these files.\n"
-    "Return ONLY a JSON object with keys: instruction, input, output. Set 'output' to an empty string.\n"
-    "If you include an 'input', keep it very short (<= 512 chars) or empty.\n\n"
-    "SAW excerpt:\n"
-    "-----8<-----\n{saw_excerpt}\n-----8<-----\n"
-    "{sources_block}"
-)
-'''
 
 USER_TEMPLATE = (
     "Primary SAW file: {saw_filename}\n"
     "Associated source files: {source_names}\n"
-    "Goal: Produce one *instruction* telling an assistant to write a SAWScript verification harness that directly references functions/methods defined in the associated C/Java source in the associated source files.\n"
+    "Goal: Produce one *instruction* that an assistant can use to write a SAW verification script. The instruction must directly reference functions/methods defined in the associated C/Java source in the associated source files.\n"
     "Rules for the instruction you will produce:\n"
+    "- If any Cryptol modules are imported reference their module/property names in the instruction, but do not include any Cryptol source.\n"
     "- SAW only. Infer the backend from the excerpt: use jvm_* if `java_load_class` appears; use llvm_* if `llvm_load_module` appears.\n"
     "- Require a let-bound spec, e.g., `let <name>_spec = do {{ ... }};` (do NOT pass an inline `do {{ ... }}` directly as an argument).\n"
     "- Reference exact symbol names/signatures from the associated source (e.g., class.method or function prototypes) and call them accordingly.\n"
     "- Prefer symbolic inputs (`jvm_fresh_var` / `llvm_fresh_var`) over hard-coded constants; add minimal preconditions needed for termination or safety (loops, division, array bounds).\n"
     "- Do not reference the solvers being used.\n"
-    "- The SAW code that will be produced later MUST contain no comments and no Markdown.\n"
+    "- Give only enough detail to specify what is being verified; do not include implementation details or code.\n"
+    "- If helper functions, types, variables, or constraints can be infered, do not mention them in the instruction.\n"
     "\n"
     "Output format (MANDATORY):\n"
     "- Return ONLY a minified JSON object with keys: instruction, input, output.\n"
     "- Set \"output\" to an empty string \"\".\n"
-    "- Keep \"input\" very short (<= 512 chars) or leave it empty; include only paths and target symbol names/signatures.\n"
+    "- Set \"input\" to an empty string \"\".\n"
     "- ASCII only; no code fences, no trailing commas, no extra fields.\n"
     "- Do not include the source code in the JSON.\n"
-    "\n"
-    "If any Cryptol modules are imported by the SAW file, reference their module/property names in the instruction, but do not include any Cryptol source.\n"
     "\n"
     "SAW excerpt:\n"
     "-----8<-----\n{saw_excerpt}\n-----8<-----\n"

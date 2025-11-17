@@ -22,7 +22,8 @@ Usage:
       --max-chars 6000 \
       --batch-file requests.jsonl   # optional: create Batch API jobs file
 """
-
+import re
+import tiktoken
 import argparse
 import json
 import os
@@ -49,9 +50,10 @@ DEFAULT_MAX_CHARS = 6000
 SYSTEM_PROMPT = (
     "You write *spec-writing instructions* for software verification or specification tasks.\n"
     "Given a code snippet, return exactly one instruction suitable for the Alpaca dataset.\n"
-    "The instruction should ask a model to *write specifications* or *verification harnesses*, e.g.,\n"
-    "  - write Cryptol properties suitable for :prove / :check,\n"
-    "  - write a SAWScript llvm_verify harness for a function,\n"
+    "The instruction should ask a model to *write specifications* or *verification script* or *write an implementation*, e.g.,\n"
+    "  - define a property that verifies the behavior of the values within the code snippet.\n"
+    "  - write an implementation of the algorithm in Cryptol,\n"
+    "  - write a SAWScript llvm_verify that verifies the implementation against the Cryptol specification,\n"
     "  - prove equivalence between two implementations, etc.\n"
     "The instruction must be standalone, concise (<= 150 words), and contain no solution.\n"
 )
@@ -96,6 +98,9 @@ ALPACA_SCHEMA = {
     },
 }
 
+TOKEN_LIMITS = {
+    "gpt-5.1": 30000,
+}
 # Light language mapping for context
 LANG_HINT = {
     ".cry": "Cryptol",
@@ -118,6 +123,19 @@ DEFAULT_SYSTEM = (
     "equivalence proofs). Follow the user's instruction exactly; do not include "
     "explanations unless asked."
 )
+enc = tiktoken.get_encoding("o200k_base")
+def count_tokens_for_messages(messages):
+    # Simple approximate scheme: concatenate role + content.
+    # For exact ChatML accounting there is some small overhead, but this is
+    # good enough for routing.
+    text_chunks = []
+    for m in messages:
+        text_chunks.append(m["role"])
+        text_chunks.append(m["content"])
+    full_text = "\n".join(text_chunks)
+
+    tokens = enc.encode(full_text)
+    return len(tokens)
 
 def _build_user_content(instruction: str, alpaca_input: str, filename: Optional[str]) -> str:
     parts = [f"{instruction.strip()}"]
@@ -131,7 +149,7 @@ def alpaca_df_to_qwen_messages(
     df: pd.DataFrame,
     output: str,
     #system_prompt: str = DEFAULT_SYSTEM,
-    drop_empty_output: bool = True,
+    drop_input: bool = True,
     include_filename_in_user: bool = True,
 ) -> pd.DataFrame:
     """
@@ -141,12 +159,9 @@ def alpaca_df_to_qwen_messages(
     records = []
     for _, r in df.iterrows():
         out = f"```{r['filetype']}\n{(r.get(output) or "").strip()}\n```"
-        if drop_empty_output and not out:
-            # SFT needs target text; skip empty outputs by default
-            continue
         user = _build_user_content(
             instruction=r["instruction"],
-            alpaca_input=r.get("input", ""),
+            alpaca_input= None if drop_input else r.get("input", ""),
             filename=r["filename"] if (include_filename_in_user and "filename" in r) else None,
         )
         messages = [
@@ -206,26 +221,58 @@ def call_openai_structured(
     to force exactly {instruction, input, output}.
     Retries with exponential backoff on transient errors.
     """
-    from openai import OpenAI
+    from openai import OpenAI, RateLimitError
     client = OpenAI()
 
     last_err = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
+            tokens = count_tokens_for_messages(
+                [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
             response = client.responses.parse(
-            model=model,
+            model= "gpt-5-2025-08-07" if model in TOKEN_LIMITS.keys() and tokens > TOKEN_LIMITS[model] else model,
             input=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system},
                 {"role": "user", "content": user},
                 ],
                 text_format=AlpacaRow,   # << works here
-                temperature=0.2,
-                max_output_tokens=400,
+                #temperature=0.2,
+                #max_output_tokens=400,
             )
+            print(f"Response:\n\n{response}")
             alpaca_row = response.output_parsed.model_dump()
             if source_code:
                 alpaca_row['instruction'] += f"\n\n# Source code:\n{source_code}"
             return alpaca_row
+        except RateLimitError as e:
+            # --- 1) Try Retry-After header if present ------------------------
+            wait_seconds = None
+            try:
+                # e.response is an httpx.Response under the hood
+                retry_after = e.response.headers.get("retry-after") if e.response else None
+                if retry_after is not None:
+                    wait_seconds = float(retry_after)
+            except Exception:
+                pass
+
+            # --- 2) Fallback: parse "Please try again in 7.368s." ------------
+            if wait_seconds is None:
+                m = re.search(r"Please try again in ([0-9.]+)s", str(e))
+                if m:
+                    time.sleep(1)
+                    wait_seconds = float(m.group(1))
+
+            # --- 3) Last resort: exponential backoff -------------------------
+            if wait_seconds is None:
+                wait_seconds = min(60, 2 ** attempt)
+
+            print(f"Rate limit hit: {e}")
+            print(f"Sleeping for {wait_seconds:.2f} seconds before retry #{attempt+1}...")
+            time.sleep(wait_seconds)
         except Exception as e:
             last_err = e
             if attempt == MAX_RETRIES:
