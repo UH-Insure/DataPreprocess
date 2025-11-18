@@ -27,6 +27,7 @@ import tiktoken
 import argparse
 import json
 import os
+import dotenv
 import sys
 import time
 from pathlib import Path
@@ -36,13 +37,13 @@ from pydantic import BaseModel
 from src.util.file_kv_cache import FileKVCache
 from . import sft_cryptol
 from . import sft_saw
-
+dotenv.load_dotenv()
 # -------- Configurable defaults --------
 DEFAULT_EXTS = [".cry", ".saw", ".c", ".h"]
 DEFAULT_MODEL = "gpt-4.1-mini"
 MAX_RETRIES = 2
 BACKOFF_BASE = 1.8
-
+CRYPTOL_VECTOR_STORE_ID = dotenv.get_key("CRYPTOL_VECTOR_STORE_ID", "")
 # Heuristic: keep code snippet small so prompt stays within token budget.
 DEFAULT_MAX_CHARS = 6000
 
@@ -223,7 +224,12 @@ def call_openai_structured(
     """
     from openai import OpenAI, RateLimitError
     client = OpenAI()
-
+    tools = [{
+        "type": "file_search",
+        "vector_store_ids": ["vs_691cd78f3e088191a660732e83652938"],
+        # optional: limit number of retrieved chunks
+        "max_num_results": 3,
+    }]
     last_err = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
@@ -242,6 +248,7 @@ def call_openai_structured(
                 text_format=AlpacaRow,   # << works here
                 #temperature=0.2,
                 #max_output_tokens=400,
+                tools=tools,
             )
             print(f"Response:\n\n{response}")
             alpaca_row = response.output_parsed.model_dump()
