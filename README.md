@@ -7,7 +7,8 @@ This repository contains the modules used to preprocess the raw Cryptol data obt
 2. Run `src.util.code_parser.py` 
 3. Run `src.util.text_parser.py`
 4. Run the notebooks in increasing order 01-06.
-It provides a complete pipeline for:
+## Preprocessing Pipeline
+Repository provides a complete pipeline for:
 - Recursively crawling multiple repositories
 - Extracting Cryptol and SAW source files
 - Cleaning and normalizing the files
