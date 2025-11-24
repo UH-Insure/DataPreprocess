@@ -5,8 +5,14 @@ This repository contains the modules used to preprocess the raw Cryptol data obt
     - Scrape all the raw text sources you desire from the web.
         - This project didn't require any html processing, as all the desired text sources were able to copied from the rendered web page.
 2. Run `src.util.code_parser.py` 
+  - ` python src/util/code_parser.py <list of root directories> --strip <PATH to strip from file name> -o data/all_sources_raw.jsonl`
 3. Run `src.util.text_parser.py`
-4. Run the notebooks in increasing order 01-06.
+4. Create .env file, the necessary environment variables are:
+  - OPEN_AI_KEY   - OpenAI API key
+  - PYTHONPATH    - Absolute path to DataPreprocess
+  - REPO_ROOT     - Absolute path to where the downloaded repositories
+  - MOUNT_DIR     - Absolute path to DataPreprocess/cryptol-files
+5. Run the notebooks in increasing order 01-06.
     - Details about the notebooks can be found in the notebooks/ directory.
 ## Preprocessing Pipeline
 Repository provides a complete pipeline for:
