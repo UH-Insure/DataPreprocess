@@ -3,7 +3,7 @@ This repository contains the modules used to preprocess the raw Cryptol data obt
 1. Collect raw data sources.
     - Pull all the repositories that will be used for training.
     - Scrape all the raw text sources you desire from the web.
-        - This project was lucky, as all the desired text sources were able to copied from the rendered web page and no HTML processing was neccesary.
+        - This project didn't require any html processing, as all the desired text sources were able to copied from the rendered web page.
 2. Run `src.util.code_parser.py` 
 3. Run `src.util.text_parser.py`
 4. Run the notebooks in increasing order 01-06.
