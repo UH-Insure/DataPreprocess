@@ -28,7 +28,7 @@ def parse_with_url_pattern(fp: Path):
         records.append(
             {
                 "filename": filename,   # URL or directory path preserved
-                "filetype": "txt",
+                "filetype": "text",
                 "content": content,
             }
         )
@@ -44,12 +44,12 @@ def load_dir(input_dir: str, ext: str = ".txt") -> pd.DataFrame:
     return pd.DataFrame(recs)
 
 if __name__ == "__main__":
-    INPUT_DIR = "/Users/josh/SecurityAnalytics/DataPreprocess/data/text"
+    INPUT_DIR = "data/text"
     df = load_dir(INPUT_DIR)
     print("Rows:", len(df))
     print(df.head(100))
     df.to_json(
-        "/Users/josh/SecurityAnalytics/DataPreprocess/data/parsed_text_data.jsonl",
+        "data/parsed_text_data.jsonl",
         orient="records",
         lines=True,
     )
