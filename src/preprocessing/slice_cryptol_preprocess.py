@@ -292,26 +292,26 @@ def process_sliced_files_to_df(
         print("\n=== Processing slice ===")
         print("Slice:", slice_path)
 
-                # Relative path of the slice under sliced_root, e.g.
+        # Relative path of the slice under sliced_root, e.g.
         #   cryptol-specs/Primitive/Symmetric/Cipher/Block/Threefish.cry/067_test512b.cry
         rel = slice_path.relative_to(sliced_root)
         filename = slice_path.name
 
-        # Path to the *original* module file, e.g.
-        #   cryptol-specs/Primitive/Symmetric/Cipher/Block/Threefish.cry
-        original_module_rel = rel.parent
+        # Directory where the original module lives:
+        #   cryptol-specs/Primitive/Symmetric/Cipher/Block
+        original_dir = rel.parent.parent
 
-        # Where we want to place the test file inside the mounted repo:
-        #   same directory as the original module:
+        # Where we want to place the temp test file inside the mounted repo:
         #   cryptol-specs/Primitive/Symmetric/Cipher/Block/067_test512b.cry
-        file_relpath = original_module_rel.parent / filename
+        file_relpath = original_dir / filename
 
-        # For the DataFrame, keep track of the original module path
-        original_filename = original_module_rel
+        # For the DataFrame, keep track of the original module path (the .cry file)
+        original_filename = rel.parent  # cryptol-specs/.../Threefish.cry
 
         try:
             code = slice_path.read_text(encoding="utf-8")
         except OSError as e:
+            
             print(f"  [error] Could not read file: {e}")
             n_fail += 1
             continue
@@ -319,7 +319,7 @@ def process_sliced_files_to_df(
         print("  [check] Initial Cryptol load")
         ok, info = check_code_with_interpreter(
             code=code,
-            rel_path=file_relpath,
+            rel_path=file_relpath,      # ✅ use cleaned path
             host_mount_dir=mount_dir,
             server_url=server_url,
             reset_server=first_reset,
@@ -336,7 +336,7 @@ def process_sliced_files_to_df(
 
         final_code, n_orig, n_final = minimize_imports(
             code=code,
-            file_relpath=file_relpath,
+            file_relpath=file_relpath,  # ✅ same cleaned path
             host_mount_dir=mount_dir,
             server_url=server_url,
         )
