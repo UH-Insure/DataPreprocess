@@ -70,7 +70,7 @@ def load_with_cryptol_server(
 
     try:
         # Mirrors REPL ':load <file>'
-        load_file = cry.load_file(container_relpath)
+        load_file = cry.load_file(container_relpath).result()  # may raise if load fails
 
         # If we got here without exception, the server accepted the file.
         result["load_ok"] = True
