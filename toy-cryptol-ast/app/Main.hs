@@ -224,6 +224,12 @@ sliceFor nameMap decls rootNm =
     , not (null (defs `intersect` Set.toList reachable))
     ]
 
+-- Remove trailing newline characters, but leave other whitespace alone.
+trimTrailingNewlines :: String -> String
+trimTrailingNewlines =
+  reverse . dropWhile (== '\n') . reverse
+
+
 --------------------------------------------------------------------------------
 -- “Defined names” for each TopDecl
 -- (values, properties, type synonyms, etc.)
@@ -448,46 +454,47 @@ stripAtAnnotations = unlines . map stripLine . lines
 --  • otherwise we fall back to the standard Cryptol pretty printer.
 prettyTopDecl :: TopDecl PName -> String
 prettyTopDecl td =
-  case td of
-    -- Value-level declarations
-    Decl tl ->
-      let d = dropLocDecl (tlValue tl)
+  trimTrailingNewlines $
+    case td of
+      -- Value-level declarations
+      Decl tl ->
+        let d = dropLocDecl (tlValue tl)
 
-          ppDefault :: String
-          ppDefault = fixCaseLayout (stripAtAnnotations (pretty td))
-      in case d of
+            ppDefault :: String
+            ppDefault = fixCaseLayout (stripAtAnnotations (pretty td))
+        in case d of
 
-        -- PP = [ ... ]  -- no arguments, pure sequence
-        DBind b
-          | null (bindParams b) ->
-              case bindImpl b of
-                Just (DExpr (EList es)) ->
-                  let nmStr   = pretty (thing (bName b))
-                      elems   = intercalate ", " [ pretty e | e <- es ]
-                      txt     = nmStr ++ " = [" ++ elems ++ "]"
-                  in fixCaseLayout (stripAtAnnotations txt)
-                _ ->
-                  ppDefault
+          -- PP = [ ... ]  -- no arguments, pure sequence
+          DBind b
+            | null (bindParams b) ->
+                case bindImpl b of
+                  Just (DExpr (EList es)) ->
+                    let nmStr   = pretty (thing (bName b))
+                        elems   = intercalate ", " [ pretty e | e <- es ]
+                        txt     = nmStr ++ " = [" ++ elems ++ "]"
+                    in fixCaseLayout (stripAtAnnotations txt)
+                  _ ->
+                    ppDefault
 
-        -- sbox = [ ... ]  (pattern binding)
-        DPatBind (PVar x) (EList es) ->
-          let nmStr = pretty (thing x)
-              elems = intercalate ", " [ pretty e | e <- es ]
-              txt   = nmStr ++ " = [" ++ elems ++ "]"
-          in fixCaseLayout (stripAtAnnotations txt)
+          -- sbox = [ ... ]  (pattern binding)
+          DPatBind (PVar x) (EList es) ->
+            let nmStr = pretty (thing x)
+                elems = intercalate ", " [ pretty e | e <- es ]
+                txt   = nmStr ++ " = [" ++ elems ++ "]"
+            in fixCaseLayout (stripAtAnnotations txt)
 
-        -- Type signatures: pretty-print, then fix annotations/case layout,
-        -- then re-indent the multi-line signature.
-        DSignature _ _ ->
-          indentSignatureLayout ppDefault
+          -- Type signatures: pretty-print, then fix annotations/case layout,
+          -- then re-indent the multi-line signature.
+          DSignature _ _ ->
+            indentSignatureLayout ppDefault
 
-        -- everything else: delegate to the standard pretty printer
-        _ ->
-          ppDefault
+          -- everything else: delegate to the standard pretty printer
+          _ ->
+            ppDefault
 
-    -- Non-Decl top-levels (type decls, pragmas, etc.)
-    _ ->
-      fixCaseLayout (stripAtAnnotations (pretty td))
+      -- Non-Decl top-levels (type decls, pragmas, etc.)
+      _ ->
+        fixCaseLayout (stripAtAnnotations (pretty td))
 
 moduleDefNames :: [TopDecl PName] -> NameSet
 moduleDefNames decls =
