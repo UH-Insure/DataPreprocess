@@ -59,29 +59,23 @@ def load_with_cryptol_server(
     Connect to Cryptol Remote API and :load the given file path.
     Returns a dict with 'load_ok' plus optional details (file_deps, errors).
     """
-    # cryptol.connect() behavior & CRYPTOL_SERVER_URL are documented by the official client. 
-    # You can also set CRYPTOL_SERVER to an executable or rely on PATH. :contentReference[oaicite:2]{index=2}
     kwargs = {}
     if server_url:
         kwargs["url"] = server_url
     cry = cryptol.connect(reset_server=reset_server, **kwargs)
 
-    result: dict = {"load_ok": False, "file": container_relpath, "error": 'None'}
+    result: dict = {"load_ok": False, "file": container_relpath, "error": "None"}
 
     try:
         # Mirrors REPL ':load <file>'
         load_file = cry.load_file(container_relpath).result()  # may raise if load fails
 
-        # If we got here without exception, the server accepted the file.
         result["load_ok"] = True
-        # Try to provide a concrete artifact to prove the server recognized the file.
-        # Recent releases added :file-deps to REPL and Python API; if available, include it. :contentReference[oaicite:3]{index=3}
+
         try:
-            # Some client builds expose this as `conn.file_deps(<path>)`.
-            deps = cry.file_deps(container_relpath, is_file=True).result()  # may raise if not in your version
+            deps = cry.file_deps(container_relpath, is_file=True).result()
             result["file_deps"] = deps["imports"]
-        except Exception as _:
-            # Fallback: ask the server to echo its current module list or something lightweight.
+        except Exception:
             result["file_deps"] = "error"
 
     except Exception as e:
@@ -89,8 +83,6 @@ def load_with_cryptol_server(
 
     return result
 
-
-# ---------- Example end-to-end usage with a DataFrame ----------
 
 def verify_df_row_with_cryptol(
     df: pd.DataFrame,
@@ -100,7 +92,9 @@ def verify_df_row_with_cryptol(
 ) -> dict:
     """
     Take row `idx` from df, write to mounted temp file, and ask Cryptol server to load it.
-    Returns a dict with paths and server response.
+    Deletes the temp file on the host after the load attempt.
+
+    Returns a dict with paths (for logging) and server response.
     """
     row = df.iloc[idx]
     code = row["content"]
@@ -112,24 +106,35 @@ def verify_df_row_with_cryptol(
         prefer_name=prefer_name,
     )
 
-    # Load in the server and return a rich confirmation payload
-    load_info = load_with_cryptol_server(
-        container_relpath=container_relpath,
-        server_url=server_url,
-        reset_server=True,  # good hygiene between calls
-    )
+    try:
+        load_info = load_with_cryptol_server(
+            container_relpath=container_relpath,
+            server_url=server_url,
+            reset_server=True,  # good hygiene between calls
+        )
+    finally:
+        # Always try to delete the temp file, even if load failed
+        try:
+            host_path.unlink()
+            deleted = True
+        except FileNotFoundError:
+            deleted = False
+        except OSError:
+            # You might want to log this in a real system
+            deleted = False
 
     return {
         "host_path": str(host_path),
         "container_relpath": container_relpath,
         "load_info": load_info,
+        "deleted": deleted,
     }
 
-# --------- How you'd actually call it ---------
+# Example usage:
 # df = pd.read_json("your.jsonl", lines=True)
 # confirm = verify_df_row_with_cryptol(
 #     df, idx=0,
-#     host_mount_dir="/path/host/mount",                 # host dir you mounted
-#     server_url=os.environ.get("CRYPTOL_SERVER_URL")    # e.g., "http://localhost:8080/"
+#     host_mount_dir="/path/host/mount",
+#     server_url=os.environ.get("CRYPTOL_SERVER_URL"),
 # )
 # print(json.dumps(confirm, indent=2))
