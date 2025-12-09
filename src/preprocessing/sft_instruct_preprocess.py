@@ -288,17 +288,39 @@ def call_openai_structured(
             time.sleep(sleep_s)
     raise last_err  # should not get here
 
+def choose_max_words_from_tokens(num_tokens_model: Any) -> int:
+    """
+    Choose a word limit for the instruction based on model token count.
+    Very small files get tiny instructions, big specs get a bit more room.
+    """
+    try:
+        n = int(num_tokens_model)
+    except (TypeError, ValueError):
+        return 150  # fallback
+
+    if n <= 0:
+        return 150
+    if n < 128:
+        return 50     # tiny snippet -> very short instruction
+    if n < 512:
+        return 100
+    if n < 2048:
+        return 150    # medium files
+    return 220         # very large files
+
 def build_prompt_call_openai_structured(
     model: str,
     input_mode: str,
     filename: str,
     lang: str,
     code: str,
+    max_words: Optional[int] = None,
 ) -> Dict[str, Any]:
     system_prompt = ""
     if lang == "cryptol":
+        max_w = choose_max_words_from_tokens(max_words)
         user, _ = build_user_prompt(filename, lang, code, input_mode=input_mode)
-        system_prompt = sft_cryptol.SYSTEM_PROMPT_CRYPTOL
+        system_prompt = sft_cryptol.SYSTEM_PROMPT_CRYPTOL.format(max_words=max_w)
         result = call_openai_structured(model, system_prompt, user)
         return result
     else:
@@ -325,6 +347,7 @@ def iter_call_openai_structured(
                 "filename": row['filename'],
                 "lang": row['filetype'],
                 "code": row['content'],
+                "max_words": row.get('num_tokens_model', None),
             }
         )
         returned_rows.append({
