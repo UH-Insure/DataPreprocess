@@ -1,4 +1,5 @@
 import re, hashlib
+from typing import Any, Callable
 
 # Encoded-data (StarCoder-style)
 _ENC_BASE64_RE   = re.compile(r"[A-Za-z0-9+/=\n]{64,}")
@@ -14,6 +15,44 @@ _NUM_LONG_RE = re.compile(r"\b\d{6,}\b")
 
 # Junk path
 _JUNK_PATH = ["SAW-course/src/intr/", "SAW-course/src/lab2A/", "SAW-course/src/lab2E/"]
+
+def count_model_tokens(text: str, model_tokenizer: Any) -> int | None:
+    """
+    Try to count tokens using a generic tokenizer-like object.
+
+    Supported shapes:
+      - HF-style: tokenizer.encode(text, add_special_tokens=False|True)
+      - Callable: tokenizer(text) -> list[int] or dict(input_ids=...)
+    """
+    if model_tokenizer is None:
+        return None
+
+    try:
+        # HuggingFace / Qwen / LLaMA etc: has .encode(...)
+        if hasattr(model_tokenizer, "encode"):
+            try:
+                ids = model_tokenizer.encode(text, add_special_tokens=False)
+            except TypeError:
+                # Some tokenizers don't accept add_special_tokens
+                ids = model_tokenizer.encode(text)
+
+        # Plain callable (e.g., tiktoken.encode)
+        elif callable(model_tokenizer):
+            ids = model_tokenizer(text)
+
+        else:
+            return None
+
+        # If we got a dict (HF __call__ style), extract input_ids
+        if isinstance(ids, dict):
+            ids = ids.get("input_ids", [])
+
+        # At this point ids should be a list[int]
+        return len(ids) if ids is not None else None
+
+    except Exception:
+        return None
+
 
 def normalize_newlines(s: str) -> str:
     return s.replace("\r\n", "\n").replace("\r", "\n")
@@ -98,6 +137,9 @@ def compute_file_metrics(
     Return a flat dict of per-file metrics suitable for a pandas DataFrame row.
     Does not make keep/drop decisions—just measures.
     """
+
+    num_tokens_model = count_model_tokens(text, model_tokenizer) if model_tokenizer is not None else None
+
     lang_tokenize = lang_tokenize or default_tokenize
 
     # Normalize once for stable hashing & line stats
@@ -122,14 +164,6 @@ def compute_file_metrics(
 
     # Hex/long-number concentration (per token)
     hexnum_ratio = hex_num_ratio(norm, token_count_hint=num_tokens_lang)
-
-    # Model tokens (optional)
-    num_tokens_model = None
-    if model_tokenizer is not None:
-        try:
-            num_tokens_model = len(model_tokenizer.encode(norm, add_special_tokens=False))
-        except Exception:
-            num_tokens_model = None
 
     # Junk path heuristic
     path_norm = filename.replace("\\", "/")
