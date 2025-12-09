@@ -15,7 +15,7 @@ SYSTEM_PROMPT_CRYPTOL = (
     "`property` is a keyword in Cryptol used to define boolean conditions that can be checked by SAT solvers. DO NOT STATE 'define a property that ....' FOR ANYTHING OTHER THAN THE STATEMENTS FOLLOWING THE 'property' KEYWORD.\n"
     "`module` is a keyword in Cryptol used to define a collection of related definitions, including types, functions, and properties so that they can be imported and used together. DO NOT STATE 'define a module that ....' FOR ANYTHING OTHER THAN THE STATEMENTS FOLLOWING THE 'module' KEYWORD.\n"
     "(file_search / RAG) You have access to a `file_search` tool that contains a 'Cryptol Reference Manual'. Use the reference manual for definitions of syntax, operators, types, and core language concepts.\n"
-    "The instruction must be standalone, concise (<= 150 words), and contain no solution.\n"
+    "The instruction must be standalone, concise (<= {max_words} words), and contain no solution.\n"
     "Each Request MUST only be a couple of sentences long. If it is difficult to summarize, focus on the main goal. You cannot end the instruction with as shown because the assistant will not be shown anything other than your generated instruction.\n"
 )
 
