@@ -65,7 +65,6 @@ def to_minhash(sigset: Iterable[str], num_perm: int) -> MinHash:
         m.update(s.encode("utf-8"))
     return m
 
-# ---------- helpers ----------
 def _read_text_utf8_normalized(path: str) -> Optional[str]:
     """Open source file as UTF-8 (errors='replace') and normalize newlines to '\n'."""
     try:
@@ -78,6 +77,7 @@ def _read_text_utf8_normalized(path: str) -> Optional[str]:
         print(f"[warn] cannot read '{path}': {e}")
         return None
 
+
 def _load_corpus_from_df(
     df: pd.DataFrame,
     filename_col: str = "filename",
@@ -86,13 +86,15 @@ def _load_corpus_from_df(
 ) -> Dict[str, str]:
     """
     Build {filename -> content} from a candidate_df.
-    If content_col provided, use it.
-    Otherwise open files by joining root_dir (if given) + filename_col.
+
+    If content_col is provided and present, use its UTF-8 string (no disk I/O).
+    Otherwise, open files by joining root_dir (if given) + filename_col.
     """
     if filename_col not in df.columns:
         raise KeyError(f"'{filename_col}' column not found in DataFrame")
 
     corpus: Dict[str, str] = {}
+
     for i, row in df.iterrows():
         relname = row[filename_col]
         if not isinstance(relname, str) or not relname:
@@ -100,11 +102,15 @@ def _load_corpus_from_df(
             continue
 
         text: Optional[str] = None
-        if content_col and content_col in df.columns:
+
+        # 1) Prefer already-loaded content in the DataFrame
+        if content_col is not None and content_col in df.columns:
             raw = row[content_col]
             if isinstance(raw, str) and raw:
+                # normalize newlines, assume it's already UTF-8 text
                 text = raw.replace("\r\n", "\n").replace("\r", "\n")
 
+        # 2) Fallback: read from disk if content missing
         if text is None:
             path = os.path.join(root_dir, relname) if root_dir else relname
             text = _read_text_utf8_normalized(path)
@@ -113,11 +119,10 @@ def _load_corpus_from_df(
             print(f"[warn] row {i}: no content for '{relname}'; skipping")
             continue
 
-        # KEY: keep relname as filename key (unchanged!)
+        # KEY: keep relname as filename key (unchanged)
         corpus[relname] = text
 
     return corpus
-
 
 def _ensure_outdir(path: str):
     os.makedirs(path, exist_ok=True)
