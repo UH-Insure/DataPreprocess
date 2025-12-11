@@ -83,6 +83,28 @@ class AlpacaRow(BaseModel):
     input: str
     output: str
 
+class QAPair(BaseModel):
+    question: str
+    answer: str
+
+
+class QAPairList(BaseModel):
+    """
+    Container for multiple Q&A pairs derived from a single scraped web page.
+    """
+    qa_pairs: List[QAPair]
+
+
+SYSTEM_PROMPT_QA = (
+    "You are an expert tutor. Given a single scraped web page in Markdown, you "
+    "write multiple high-quality question–answer pairs that cover the page's "
+    "important facts and concepts.\n"
+    "Questions must be self-contained and understandable without seeing the "
+    "page; answers should be concise but informative.\n"
+    "Avoid meta-questions about the document itself; focus on its content."
+)
+
+
 # ---- Response schema: forces Alpaca fields ----
 ALPACA_SCHEMA = {
     "name": "AlpacaRow",
@@ -146,6 +168,41 @@ def _build_user_content(instruction: str, alpaca_input: str, filename: Optional[
         parts.append(f"`{alpaca_input.strip()}`")
     return "\n".join(parts)
 
+def explode_qa_pairs_overwrite_content(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    From a df where each row has:
+      - 'content'  : full Markdown page
+      - 'qa_pairs' : list of {'question', 'answer'}
+
+    Produce a new df where each row is ONE Q&A and:
+      - instruction = question
+      - content     = answer          (overwrites original content)
+      - input       = ""              (or customize)
+      - output      = ""              (left empty as requested)
+      - original page is kept in 'page_content'
+    """
+    # Only rows with QA pairs
+    df_qa = df[df["qa_pairs"].notna()].copy()
+
+    # Explode to one row per QA pair
+    df_qa = df_qa.explode("qa_pairs", ignore_index=True)
+
+    # Preserve original page, then overwrite content with the answer
+    df_qa["page_content"] = df_qa["content"]
+    df_qa["instruction"] = df_qa["qa_pairs"].apply(lambda qa: qa["question"])
+    df_qa["content"] = df_qa["qa_pairs"].apply(lambda qa: qa["answer"])
+
+    # Alpaca-style fields
+    df_qa["input"] = ""   # or a snippet of page_content if you want context
+    df_qa["output"] = ""  # explicitly empty
+
+    # Make sure filetype is something sensible
+    df_qa["filetype"] = df_qa["filetype"].fillna("text")
+
+    # Drop the list-of-QAs column if not needed
+    df_qa = df_qa.drop(columns=["qa_pairs"])
+
+    return df_qa
 def alpaca_df_to_qwen_messages(
     df: pd.DataFrame,
     output: str,
@@ -154,30 +211,62 @@ def alpaca_df_to_qwen_messages(
     include_filename_in_user: bool = True,
 ) -> pd.DataFrame:
     """
-    Convert a DataFrame with columns ['instruction','input','output', 'filename'?]
+    Convert a DataFrame with columns ['instruction','input', <output>, 'filename'?]
     into rows of {'messages': [{role,content}...]} for Qwen chat SFT.
+
+    Behavior by filetype:
+      - 'cryptol' : system = SYSTEM_PROMPT_CRYPTOL, assistant = ```cryptol ... ```
+      - 'saw'     : system = SYSTEM_PROMPT_SAW,     assistant = ```saw ... ```
+      - 'text'    : system = SYSTEM_PROMPT_QA,      assistant = plain answer text
+      - other     : no special system prompt, assistant = plain answer text
     """
     records = []
     for _, r in df.iterrows():
-        out = f"```{r['filetype']}\n{(r.get(output) or "").strip()}\n```"
+        filetype = r.get("filetype", "") or ""
+        answer_text = (r.get(output) or "").strip()
+
+        # ----- Assistant message content -----
+        if filetype == "cryptol":
+            out = f"```cryptol\n{answer_text}\n```"
+        elif filetype == "saw":
+            out = f"```saw\n{answer_text}\n```"
+        elif filetype == "text":
+            # Q&A: plain natural-language answer (no code fences)
+            out = answer_text
+        else:
+            # Fallback: plain text as well
+            out = answer_text
+
+        # ----- User message content (question + optional input) -----
         user = _build_user_content(
             instruction=r["instruction"],
-            alpaca_input= None if drop_input else r.get("input", ""),
+            alpaca_input=None if drop_input else r.get("input", ""),
             filename=r["filename"] if (include_filename_in_user and "filename" in r) else None,
         )
+
+        # ----- System prompt selection -----
+        if filetype == "cryptol":
+            system_content = SYSTEM_PROMPT_CRYPTOL
+        elif filetype == "saw":
+            system_content = SYSTEM_PROMPT_SAW
+        elif filetype == "text":
+            system_content = ""
+        else:
+            system_content = ""
+
         messages = [
-            {"role": "system", "content": \
-             SYSTEM_PROMPT_CRYPTOL if r['filetype'] == "cryptol" else \
-             SYSTEM_PROMPT_SAW if r['filetype'] == "saw" else ""},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": user},
             {"role": "assistant", "content": out},
         ]
+
         rec = {"messages": messages}
         # keep useful metadata alongside
         for k in ("filename", "filetype", "set"):
             if k in r:
                 rec[k] = r[k]
         records.append(rec)
+
     return pd.DataFrame(records)
 
 def write_jsonl(rows: Iterable[Dict[str, Any]], path: str) -> None:
@@ -216,18 +305,20 @@ def call_openai_structured(
         system: str, 
         user: str,
         source_code: str = "",
+        text_format: type[BaseModel] = AlpacaRow,
         ) -> Dict[str, Any]:
     """
-    Calls the OpenAI Responses API using JSON Schema 'response_format'
-    to force exactly {instruction, input, output}.
-    Retries with exponential backoff on transient errors.
+    Calls the OpenAI Responses API using a Pydantic 'text_format'
+    to force a particular JSON shape.
+
+    For code-spec generation we use AlpacaRow; for text Q&A generation
+    we use QAPairList.
     """
     from openai import OpenAI, RateLimitError
     client = OpenAI()
     tools = [{
         "type": "file_search",
         "vector_store_ids": ["vs_691cd78f3e088191a660732e83652938"],
-        # optional: limit number of retrieved chunks
         "max_num_results": 3,
     }]
     last_err = None
@@ -240,40 +331,34 @@ def call_openai_structured(
                 ],
             )
             response = client.responses.parse(
-            model= "gpt-5-2025-08-07" if model in TOKEN_LIMITS.keys() and tokens > TOKEN_LIMITS[model] else model,
-            input=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
+                model= "gpt-5-2025-08-07" if model in TOKEN_LIMITS.keys() and tokens > TOKEN_LIMITS[model] else model,
+                input=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
                 ],
-                text_format=AlpacaRow,   # << works here
-                #temperature=0.2,
-                #max_output_tokens=400,
+                text_format=text_format,
                 tools=tools,
             )
             print(f"Response:\n\n{response}")
-            alpaca_row = response.output_parsed.model_dump()
-            if source_code:
-                alpaca_row['instruction'] += f"\n\n# Source code:\n{source_code}"
-            return alpaca_row
+            parsed = response.output_parsed.model_dump()
+            # For code, you optionally append source_code into the instruction.
+            if source_code and isinstance(parsed, dict) and "instruction" in parsed:
+                parsed["instruction"] += f"\n\n# Source code:\n{source_code}"
+            return parsed
         except RateLimitError as e:
-            # --- 1) Try Retry-After header if present ------------------------
+            # (unchanged retry logic...)
             wait_seconds = None
             try:
-                # e.response is an httpx.Response under the hood
                 retry_after = e.response.headers.get("retry-after") if e.response else None
                 if retry_after is not None:
                     wait_seconds = float(retry_after)
             except Exception:
                 pass
-
-            # --- 2) Fallback: parse "Please try again in 7.368s." ------------
             if wait_seconds is None:
                 m = re.search(r"Please try again in ([0-9.]+)s", str(e))
                 if m:
                     time.sleep(1)
                     wait_seconds = float(m.group(1))
-
-            # --- 3) Last resort: exponential backoff -------------------------
             if wait_seconds is None:
                 wait_seconds = min(60, 2 ** attempt)
 
@@ -288,45 +373,61 @@ def call_openai_structured(
             time.sleep(sleep_s)
     raise last_err  # should not get here
 
-def choose_max_words_from_tokens(num_tokens_model: Any) -> int:
-    """
-    Choose a word limit for the instruction based on model token count.
-    Very small files get tiny instructions, big specs get a bit more room.
-    """
-    try:
-        n = int(num_tokens_model)
-    except (TypeError, ValueError):
-        return 150  # fallback
-
-    if n <= 0:
-        return 150
-    if n < 128:
-        return 50     # tiny snippet -> very short instruction
-    if n < 512:
-        return 100
-    if n < 2048:
-        return 150    # medium files
-    return 220         # very large files
-
 def build_prompt_call_openai_structured(
     model: str,
     input_mode: str,
     filename: str,
     lang: str,
     code: str,
-    max_words: Optional[int] = None,
 ) -> Dict[str, Any]:
     system_prompt = ""
     if lang == "cryptol":
-        max_w = choose_max_words_from_tokens(max_words)
+        # Existing Cryptol branch
         user, _ = build_user_prompt(filename, lang, code, input_mode=input_mode)
-        system_prompt = sft_cryptol.SYSTEM_PROMPT_CRYPTOL.format(max_words=max_w)
-        result = call_openai_structured(model, system_prompt, user)
+        system_prompt = sft_cryptol.SYSTEM_PROMPT_CRYPTOL
+        result = call_openai_structured(
+            model,
+            system_prompt,
+            user,
+            text_format=AlpacaRow,
+        )
         return result
+
+    elif lang == "text":
+        # NEW: scraped Markdown web page -> multiple Q&A pairs
+        user = (
+            "You are given the full content of ONE scraped web page in Markdown format.\n"
+            "Read the entire document and generate multiple high-quality question–answer "
+            "pairs that could be used to quiz a student on this page.\n"
+            "Each question must be answerable using ONLY the information in this page.\n"
+            "Include both factual 'what/when/where' questions and deeper 'why/how' "
+            "questions when appropriate.\n\n"
+            f"Filename: {filename}\n\n"
+            "-----8<----- BEGIN PAGE (Markdown) -----8<-----\n"
+            f"{code}\n"
+            "-----8<----- END PAGE (Markdown) -----8<-----\n"
+        )
+        system_prompt = SYSTEM_PROMPT_QA
+        # Return Q&A array: { "qa_pairs": [ { "question": ..., "answer": ... }, ... ] }
+        result = call_openai_structured(
+            model,
+            system_prompt,
+            user,
+            text_format=QAPairList,
+        )
+        return result
+
     else:
+        # Existing SAW (or other) branch
         user, source_code, _ = sft_saw.build_user_prompt(filename, code)
         system_prompt = sft_saw.SYSTEM_PROMPT
-        result = call_openai_structured(model, system_prompt, user, source_code=source_code)
+        result = call_openai_structured(
+            model,
+            system_prompt,
+            user,
+            source_code=source_code,
+            text_format=AlpacaRow,
+        )
         return result
 
 def iter_call_openai_structured(
@@ -347,7 +448,6 @@ def iter_call_openai_structured(
                 "filename": row['filename'],
                 "lang": row['filetype'],
                 "code": row['content'],
-                "max_words": row.get('num_tokens_model', None),
             }
         )
         returned_rows.append({
